@@ -8,6 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>Unterrichtsverwaltung</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg: #0f0f1a;
@@ -330,6 +331,11 @@
   }
   .profit-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
   .profit-value { font-family: 'DM Serif Display', serif; font-size: 2rem; color: var(--green); margin-top: 4px; }
+
+  /* LISTE */
+  .pdf-preview { width: 100%; height: 70vh; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; margin-top: 16px; }
+  @media (max-width: 700px) { .pdf-preview { display: none; } }
+  .liste-hint { font-size: 0.78rem; color: var(--text-muted); margin-top: 12px; text-align: center; }
 </style>
 </head>
 <body>
@@ -351,6 +357,9 @@
   </button>
   <button class="nav-btn" onclick="showPage('abrechnung')">
     <span class="nav-icon">💶</span>Abrechnung
+  </button>
+  <button class="nav-btn" onclick="showPage('liste')">
+    <span class="nav-icon">📄</span>Liste
   </button>
 </div>
 
@@ -385,6 +394,25 @@
     </select>
   </div>
   <div id="billingContent"></div>
+</div>
+
+<!-- ==================== LISTE (PDF) ==================== -->
+<div class="page" id="page-liste">
+  <div class="section-title">Nutzungsdauer &amp; Anwesenheit</div>
+  <div class="form-group">
+    <label class="form-label">Mieter/Mieterin</label>
+    <input class="form-input" id="l_mieter" placeholder="Nachname, Vorname" onchange="saveSettings();renderListe()">
+  </div>
+  <div class="month-picker">
+    <select class="form-input" id="listMonth" onchange="renderListe()" style="max-width:140px;"></select>
+    <select class="form-input" id="listYear" onchange="renderListe()" style="max-width:100px;"></select>
+  </div>
+  <div class="flex-end" style="justify-content:center;flex-wrap:wrap;">
+    <button class="btn btn-primary" onclick="openListePdf()">📄 PDF öffnen / drucken</button>
+    <button class="btn btn-ghost" onclick="downloadListePdf()">⬇ Herunterladen</button>
+  </div>
+  <div class="liste-hint" id="listeHint"></div>
+  <iframe class="pdf-preview" id="listePreview" title="PDF-Vorschau"></iframe>
 </div>
 
 <!-- ==================== MODAL: SCHÜLER HINZUFÜGEN/BEARBEITEN ==================== -->
@@ -435,6 +463,30 @@
       <label class="form-label">Unterrichtstag(e)</label>
       <input class="form-input" id="f_tag" placeholder="z.B. Montag, Donnerstag">
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Uhrzeit (Beginn)</label>
+        <input class="form-input" id="f_uhrzeit" type="time">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unterricht ab</label>
+        <input class="form-input" id="f_ab" type="date">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fach</label>
+        <input class="form-input" id="f_fach" placeholder="Gitarre">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Kurs-Nr.</label>
+        <input class="form-input" id="f_kurs" placeholder="102">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Geburtsdatum</label>
+      <input class="form-input" id="f_geburt" type="date">
+    </div>
     <div class="form-group">
       <label class="form-label">Notizen</label>
       <textarea class="form-input" id="f_notizen" placeholder="Besonderheiten..." rows="3" style="resize:none;"></textarea>
@@ -470,10 +522,11 @@ function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
-  const idx = ['schueler','anwesenheit','abrechnung'].indexOf(id);
+  const idx = ['schueler','anwesenheit','abrechnung','liste'].indexOf(id);
   document.querySelectorAll('.nav-btn')[idx].classList.add('active');
   if(id === 'anwesenheit') renderAttendance();
   if(id === 'abrechnung') renderBilling();
+  if(id === 'liste') renderListe();
 }
 
 // ==================== HEADER DATE ====================
@@ -545,11 +598,16 @@ function openEditStudent(id) {
   document.getElementById('f_pauschale').value = s.pauschale || '';
   document.getElementById('f_tag').value = s.tag || '';
   document.getElementById('f_notizen').value = s.notizen || '';
+  document.getElementById('f_uhrzeit').value = s.uhrzeit || '';
+  document.getElementById('f_ab').value = s.ab || '';
+  document.getElementById('f_fach').value = s.fach || '';
+  document.getElementById('f_kurs').value = s.kurs || '';
+  document.getElementById('f_geburt').value = s.geburt || '';
   openModal('studentModal');
 }
 
 function clearForm() {
-  ['f_vorname','f_nachname','f_telefon','f_email','f_pauschale','f_tag','f_notizen'].forEach(id => {
+  ['f_vorname','f_nachname','f_telefon','f_email','f_pauschale','f_tag','f_notizen','f_uhrzeit','f_ab','f_fach','f_kurs','f_geburt'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f_dauer').value = 45;
@@ -572,6 +630,11 @@ function saveStudent() {
     pauschale,
     tag: document.getElementById('f_tag').value.trim(),
     notizen: document.getElementById('f_notizen').value.trim(),
+    uhrzeit: document.getElementById('f_uhrzeit').value,
+    ab: document.getElementById('f_ab').value,
+    fach: document.getElementById('f_fach').value.trim(),
+    kurs: document.getElementById('f_kurs').value.trim(),
+    geburt: document.getElementById('f_geburt').value,
   };
 
   if(editingStudentId) {
@@ -598,9 +661,28 @@ function deleteStudent() {
 }
 
 // ==================== ATTENDANCE ====================
+function pad2(n) { return String(n).padStart(2, '0'); }
 function dateKey(d) {
-  return d.toISOString().split('T')[0];
+  // lokales Datum (toISOString lieferte in MEZ/MESZ den Vortag)
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
 }
+
+// Einmalige Korrektur alter Datumsschlüssel (waren um einen Tag nach vorne verschoben)
+(function migrateDateKeys() {
+  try {
+    if(localStorage.getItem('uv_datefix1')) return;
+    const fixed = {};
+    Object.keys(attendance).forEach(k => {
+      const d = new Date(k + 'T00:00:00');
+      if(d.getTimezoneOffset() < 0) d.setDate(d.getDate() + 1);
+      const nk = dateKey(d);
+      fixed[nk] = Object.assign(fixed[nk] || {}, attendance[k]);
+    });
+    attendance = fixed;
+    save();
+    localStorage.setItem('uv_datefix1', '1');
+  } catch(e) { console.error(e); }
+})();
 
 function changeDate(dir) {
   currentAttDate.setDate(currentAttDate.getDate() + dir);
@@ -764,6 +846,206 @@ function renderBilling() {
     </div>`;
 }
 
+// ==================== LISTE / PDF ====================
+let settings = JSON.parse(localStorage.getItem('uv_settings') || '{}');
+function saveSettings() {
+  settings.mieter = document.getElementById('l_mieter').value.trim();
+  localStorage.setItem('uv_settings', JSON.stringify(settings));
+}
+
+const WD = [['montag','MO'],['dienstag','DI'],['mittwoch','MI'],['donnerstag','DO'],['freitag','FR'],['samstag','SA'],['sonntag','SO']];
+function weekdayInfo(tag) {
+  const t = (tag || '').toLowerCase();
+  let best = null;
+  WD.forEach(([name, abbr], i) => {
+    const pos = t.indexOf(name);
+    const pos2 = t.search(new RegExp('\\b' + abbr.toLowerCase() + '\\b'));
+    const p = pos >= 0 ? pos : pos2;
+    if(p >= 0 && (!best || p < best.pos)) best = { pos: p, idx: i, abbr };
+  });
+  return best ? best : { idx: 9, abbr: '' };
+}
+function addMinutes(hhmm, min) {
+  if(!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = h * 60 + m + Number(min || 0);
+  return pad2(Math.floor(t / 60) % 24) + ':' + pad2(t % 60);
+}
+function fmtShort(iso) { // 2026-09-22 -> 22.09.26
+  if(!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return d + '.' + m + '.' + y.slice(2);
+}
+
+function initListePickers() {
+  const mSel = document.getElementById('listMonth');
+  const ySel = document.getElementById('listYear');
+  mSel.innerHTML = MONTHS.map((m,i) => `<option value="${i}">${m}</option>`).join('');
+  const now = new Date();
+  mSel.value = now.getMonth();
+  const years = [];
+  for(let y = now.getFullYear()-2; y <= now.getFullYear()+1; y++) years.push(y);
+  ySel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  ySel.value = now.getFullYear();
+  document.getElementById('l_mieter').value = settings.mieter || '';
+}
+
+let listeUrl = null;
+function buildListePdf() {
+  const month = parseInt(document.getElementById('listMonth').value);
+  const year = parseInt(document.getElementById('listYear').value);
+  const days = getDaysInMonth(year, month);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const L = 15, R = 195;
+  const BOX_X = 96, BOX_W = 13, BOX_GAP = 1.3;
+  const boxX = i => BOX_X + i * (BOX_W + BOX_GAP);
+  const zeitraum = year + '-' + pad2(month + 1);
+  let page = 1;
+
+  const sorted = students.slice().sort((a, b) => {
+    const wa = weekdayInfo(a.tag).idx, wb = weekdayInfo(b.tag).idx;
+    if(wa !== wb) return wa - wb;
+    return (a.uhrzeit || '99:99').localeCompare(b.uhrzeit || '99:99');
+  });
+
+  function header() {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+    doc.text('Nutzungsdauer und Anwesenheit', L, 30);
+    doc.setLineWidth(0.8); doc.line(L, 36, R, 36);
+    doc.setFontSize(9);
+    doc.text('Mieter/Mieterin :', L, 46);
+    doc.text(settings.mieter || '', L + 28, 46);
+    doc.text('Zeitraum :', L, 52);
+    doc.text(zeitraum, L + 28, 52);
+    doc.text('Kurs', L, 58);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+    doc.text('Vorgezogen', boxX(5), 51);
+    doc.text('nachgeholt', boxX(5), 55);
+    doc.setLineWidth(0.5); doc.line(L, 61, R, 61);
+    return 61;
+  }
+  function footer() {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    doc.text('Seite : ' + page, R, 288, { align: 'right' });
+  }
+  function segBox(x, y, letters, mark) {
+    // Kästchen mit drei Feldern, z.B. A|E|U; mark = Index des markierten Feldes
+    doc.setLineWidth(0.25); doc.rect(x, y, BOX_W, 4.5);
+    const w = BOX_W / 3;
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
+    letters.forEach((ch, i) => {
+      const cx = x + w * i + w / 2;
+      if(i > 0) doc.line(x + w * i, y + 0.8, x + w * i, y + 3.7);
+      if(mark === i) {
+        doc.setFillColor(0, 0, 0); doc.circle(cx, y + 2.25, 1.6, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+        doc.text(ch, cx, y + 3.3, { align: 'center' });
+        doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal');
+      } else {
+        doc.text(ch, cx, y + 3.3, { align: 'center' });
+      }
+    });
+  }
+
+  let y = header();
+  const BLOCK_H = 30;
+  let summary = [];
+
+  sorted.forEach(s => {
+    if(y + BLOCK_H > 280) { footer(); doc.addPage(); page++; y = header(); }
+    const wd = weekdayInfo(s.tag).abbr;
+    const dauer = Number(s.dauer) || 45;
+    const einheiten = Math.round(dauer / 15);
+    const entries = days
+      .filter(d => attendance[d] && attendance[d][s.id])
+      .map(d => ({ d, st: attendance[d][s.id] }));
+    const present = entries.filter(e => e.st === 'present').length;
+    const nutzung = present * einheiten;
+    summary.push({ name: s.nachname + ', ' + s.vorname, termine: entries.length, nutzung });
+
+    // Zeile 1: Kurs / EU / Datum
+    let r1 = y + 6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(((s.kurs || '102') + '  ' + (s.fach || 'Gitarre')), L, r1);
+    doc.text('EU ' + dauer, 66, r1);
+    doc.text('Datum', BOX_X - 1.5, r1, { align: 'right' });
+    for(let i = 0; i < 6; i++) {
+      doc.setLineWidth(0.25); doc.rect(boxX(i), y + 1.5, BOX_W, 5.5);
+      const e = i < 5 ? entries[i] : null;
+      let label = '';
+      if(e) label = e.d.slice(8, 10) + '.' + e.d.slice(5, 7) + '.';
+      if(i === 5 && entries.length > 5) label = entries.slice(5).map(x => x.d.slice(8, 10) + '.').join(' ');
+      if(label) { doc.setFontSize(8); doc.text(label, boxX(i) + BOX_W / 2, y + 5.3, { align: 'center' }); }
+    }
+
+    // Zeile 2: Tag / Zeit / Einheiten / D|A|V
+    let r2 = y + 11.5;
+    doc.setFontSize(8.5);
+    doc.text(wd, L + 2, r2);
+    const zeit = s.uhrzeit ? (s.uhrzeit + '  ' + addMinutes(s.uhrzeit, dauer)) : '';
+    doc.text((zeit ? zeit + '   ' : '') + dauer + ' Minuten', L + 12, r2);
+    doc.text(einheiten + ' Einheiten', 66, r2);
+    for(let i = 0; i < 5; i++) segBox(boxX(i), y + 8.3, ['D','A','V'], -1);
+    doc.setLineWidth(0.25); doc.rect(boxX(5), y + 8.3, BOX_W, 4.5);
+    doc.setLineWidth(0.2); doc.line(L, y + 14, R, y + 14);
+
+    // Zeile 3: Name / Telefon / ab / A|E|U / Geburtsdatum
+    let r3 = y + 18.3;
+    doc.setFontSize(8.5);
+    doc.text((s.nachname + ', ' + s.vorname).slice(0, 22), L, r3);
+    doc.setFontSize(7.5);
+    doc.text((s.telefon || '').replace(/\s|\//g, ''), 47, r3);
+    if(s.ab) doc.text('ab ' + fmtShort(s.ab), 72, r3);
+    for(let i = 0; i < 6; i++) {
+      const e = i < 5 ? entries[i] : entries[5];
+      const mark = e ? { present: 0, excused: 1, absent: 2 }[e.st] : -1;
+      segBox(boxX(i), y + 15.2, ['A','E','U'], mark);
+    }
+    if(s.geburt) { doc.setFontSize(7.5); doc.text(fmtShort(s.geburt), R, r3, { align: 'right' }); }
+    doc.setLineWidth(0.2); doc.line(L, y + 21.5, R, y + 21.5);
+
+    // Zeile 4: Anzahl
+    let r4 = y + 26;
+    doc.setFontSize(8.5);
+    doc.text('Anzahl Schüler:innen :    1', L, r4);
+    doc.text('Anzahl Nutzungseinheiten', boxX(5) + BOX_W - 16, r4, { align: 'right' });
+    doc.setLineWidth(0.25); doc.rect(R - 11, y + 22.7, 11, 4.5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(String(nutzung), R - 5.5, r4, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setLineWidth(0.5); doc.line(L, y + 28.5, R, y + 28.5);
+    y += BLOCK_H;
+  });
+
+  if(sorted.length === 0) {
+    doc.setFontSize(10); doc.text('Keine Schüler erfasst.', L, y + 10);
+  }
+  footer();
+  return { doc, name: 'Anwesenheitsliste-' + zeitraum + '.pdf', summary };
+}
+
+function renderListe() {
+  const hint = document.getElementById('listeHint');
+  if(!window.jspdf) { hint.textContent = 'PDF-Bibliothek konnte nicht geladen werden (Internetverbindung?).'; return; }
+  const { doc, summary } = buildListePdf();
+  if(listeUrl) URL.revokeObjectURL(listeUrl);
+  listeUrl = doc.output('bloburl');
+  document.getElementById('listePreview').src = listeUrl;
+  const termine = summary.reduce((a, x) => a + x.termine, 0);
+  hint.textContent = students.length + ' Schüler · ' + termine + ' erfasste Termine im gewählten Monat';
+}
+function openListePdf() {
+  if(!window.jspdf) return renderListe();
+  const { doc } = buildListePdf();
+  window.open(doc.output('bloburl'), '_blank');
+}
+function downloadListePdf() {
+  if(!window.jspdf) return renderListe();
+  const { doc, name } = buildListePdf();
+  doc.save(name);
+}
+
 // ==================== UTILS ====================
 function formatEuro(v) {
   return new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'}).format(v || 0);
@@ -783,6 +1065,7 @@ document.getElementById('studentModal').addEventListener('click', function(e) {
 
 // ==================== INIT ====================
 initBillingPickers();
+initListePickers();
 renderStudents();
 renderAttendance();
 </script>
