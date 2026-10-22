@@ -960,8 +960,9 @@ function buildListePdf() {
     const entries = days
       .filter(d => attendance[d] && attendance[d][s.id])
       .map(d => ({ d, st: attendance[d][s.id] }));
-    const present = entries.filter(e => e.st === 'present').length;
-    const nutzung = present * einheiten;
+    // Anwesend + entschuldigt zählen als genutzt
+    const genutzt = entries.filter(e => e.st === 'present' || e.st === 'excused').length;
+    const nutzung = genutzt * einheiten;
     summary.push({ name: s.nachname + ', ' + s.vorname, termine: entries.length, nutzung });
 
     // Zeile 1: Kurs / EU / Datum
@@ -986,7 +987,8 @@ function buildListePdf() {
     const zeit = s.uhrzeit ? (s.uhrzeit + '  ' + addMinutes(s.uhrzeit, dauer)) : '';
     doc.text((zeit ? zeit + '   ' : '') + dauer + ' Minuten', L + 12, r2);
     doc.text(einheiten + ' Einheiten', 66, r2);
-    for(let i = 0; i < 5; i++) segBox(boxX(i), y + 8.3, ['D','A','V'], -1);
+    // D|A|V: bei jedem erfassten Termin 'Durchgeführt' markieren
+    for(let i = 0; i < 5; i++) segBox(boxX(i), y + 8.3, ['D','A','V'], entries[i] ? 0 : -1);
     doc.setLineWidth(0.25); doc.rect(boxX(5), y + 8.3, BOX_W, 4.5);
     doc.setLineWidth(0.2); doc.line(L, y + 14, R, y + 14);
 
