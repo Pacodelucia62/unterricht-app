@@ -249,18 +249,6 @@
   .att-student-name { font-weight: 600; margin-bottom: 10px; }
   .att-buttons { display: flex; gap: 8px; }
 
-  /* STATS */
-  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px;
-    text-align: center;
-  }
-  .stat-value { font-family: 'DM Serif Display', serif; font-size: 1.8rem; color: var(--accent); }
-  .stat-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-
   /* MONATSABRECHNUNG */
   .month-row {
     display: flex;
@@ -364,9 +352,6 @@
   <button class="nav-btn" onclick="showPage('abrechnung')">
     <span class="nav-icon">💶</span>Abrechnung
   </button>
-  <button class="nav-btn" onclick="showPage('statistik')">
-    <span class="nav-icon">📊</span>Statistik
-  </button>
 </div>
 
 <!-- ==================== SCHÜLER ==================== -->
@@ -400,13 +385,6 @@
     </select>
   </div>
   <div id="billingContent"></div>
-</div>
-
-<!-- ==================== STATISTIK ==================== -->
-<div class="page" id="page-statistik">
-  <div class="section-title">Statistik</div>
-  <div class="stat-grid" id="statsGrid"></div>
-  <div id="statsDetail"></div>
 </div>
 
 <!-- ==================== MODAL: SCHÜLER HINZUFÜGEN/BEARBEITEN ==================== -->
@@ -492,11 +470,10 @@ function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
-  const idx = ['schueler','anwesenheit','abrechnung','statistik'].indexOf(id);
+  const idx = ['schueler','anwesenheit','abrechnung'].indexOf(id);
   document.querySelectorAll('.nav-btn')[idx].classList.add('active');
   if(id === 'anwesenheit') renderAttendance();
   if(id === 'abrechnung') renderBilling();
-  if(id === 'statistik') renderStats();
 }
 
 // ==================== HEADER DATE ====================
@@ -785,60 +762,6 @@ function renderBilling() {
       <div class="profit-value" style="color:${totalGewinn >= 0 ? 'var(--green)' : 'var(--red)'}">${formatEuro(totalGewinn)}</div>
       ${!isJanuary ? `<div class="text-muted mt-8">Einnahmen: ${formatEuro(totalEinnahmen)} · Ausgaben: ${formatEuro(totalAusgaben)}</div>` : `<div class="text-muted mt-8">Nur Ausgaben bei Anwesenheit</div>`}
     </div>`;
-}
-
-// ==================== STATS ====================
-function renderStats() {
-  const grid = document.getElementById('statsGrid');
-  const detail = document.getElementById('statsDetail');
-
-  let totalPresent = 0, totalExcused = 0, totalAbsent = 0;
-  Object.keys(attendance).forEach(date => {
-    Object.values(attendance[date]).forEach(v => {
-      if(v === 'present') totalPresent++;
-      else if(v === 'excused') totalExcused++;
-      else if(v === 'absent') totalAbsent++;
-    });
-  });
-
-  const total = totalPresent + totalExcused + totalAbsent;
-  const attRate = total > 0 ? Math.round((totalPresent / total) * 100) : 0;
-
-  grid.innerHTML = `
-    <div class="stat-card"><div class="stat-value">${students.length}</div><div class="stat-label">Schüler</div></div>
-    <div class="stat-card"><div class="stat-value">${attRate}%</div><div class="stat-label">Anwesenheit</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--green)">${totalPresent}</div><div class="stat-label">Anwesend</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--red)">${totalAbsent}</div><div class="stat-label">Unentsch. Fehlt</div></div>
-  `;
-
-  if(students.length === 0) {
-    detail.innerHTML = `<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">Noch keine Daten vorhanden.</div></div>`;
-    return;
-  }
-
-  detail.innerHTML = `<div class="section-title" style="font-size:1.1rem;margin-top:8px;">Pro Schüler</div>` +
-    students.map(s => {
-      const hist = getStudentHistory(s.id);
-      const p = hist.filter(x=>x==='present').length;
-      const e = hist.filter(x=>x==='excused').length;
-      const a = hist.filter(x=>x==='absent').length;
-      const tot = p+e+a;
-      const rate = tot > 0 ? Math.round((p/tot)*100) : 0;
-      return `<div class="card">
-        <div class="card-header">
-          <div>
-            <div class="card-title">${s.vorname} ${s.nachname}</div>
-            <div class="card-subtitle">${s.dauer} Min · ${formatEuro(s.pauschale)}/Monat</div>
-          </div>
-          <div style="font-family:'DM Serif Display',serif;font-size:1.4rem;color:${rate>=80?'var(--green)':rate>=60?'var(--accent)':'var(--red)'}">${rate}%</div>
-        </div>
-        <div style="display:flex;gap:12px;font-size:0.82rem;">
-          <span>✅ ${p} anwesend</span>
-          <span>📝 ${e} entschuldigt</span>
-          <span>❌ ${a} gefehlt</span>
-        </div>
-      </div>`;
-    }).join('');
 }
 
 // ==================== UTILS ====================
